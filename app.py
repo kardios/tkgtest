@@ -1,21 +1,25 @@
-# event_sense_web.py
+# app.py
 import streamlit as st
 from openai import OpenAI
 import json
+import pandas as pd
 import plotly.express as px
 import networkx as nx
 from pyvis.network import Network
 import tempfile
 
-# Initialize OpenAI client
+# ---------------------------
+# 1️⃣ OpenAI Client Setup
+# ---------------------------
+# Use Streamlit secrets for API key
 api_key = st.secrets["OPENAI_API_KEY"]
-client = OpenAI(api_key=api_key)  # replace with env variable in production
+client = OpenAI(api_key=api_key)
 
 st.set_page_config(page_title="EventSense Web", layout="wide")
 st.title("EventSense Web – Temporal Knowledge Graph Prototype")
 
 # ---------------------------
-# 1️⃣ User Inputs
+# 2️⃣ User Inputs
 # ---------------------------
 topic = st.text_input("Enter a topic or event", value="Paris Agreement 2015")
 domain_filter = st.text_area("Optional: Trusted domains (comma-separated)", value="un.org,bbc.com,reuters.com")
@@ -28,7 +32,7 @@ if st.button("Fetch Events") and topic:
     domains = [d.strip() for d in domain_filter.split(",") if d.strip()]
     
     # ---------------------------
-    # 2️⃣ GPT-5 Web Search Call
+    # 3️⃣ GPT-5 Web Search Call
     # ---------------------------
     tools = [{"type": "web_search"}]
     if domains:
@@ -59,7 +63,7 @@ if st.button("Fetch Events") and topic:
     )
     
     # ---------------------------
-    # 3️⃣ Parse JSON
+    # 4️⃣ Parse JSON
     # ---------------------------
     try:
         events_json = json.loads(response.output_text)
@@ -72,7 +76,7 @@ if st.button("Fetch Events") and topic:
         st.stop()
     
     # ---------------------------
-    # 4️⃣ Timeline Visualization (Plotly)
+    # 5️⃣ Timeline Visualization (Plotly)
     # ---------------------------
     st.subheader("Timeline of Events")
     timeline_data = [
@@ -86,14 +90,21 @@ if st.button("Fetch Events") and topic:
     ]
     
     if timeline_data:
-        df = px.data.frame(timeline_data)
-        fig = px.scatter(df, x="date", y=[1]*len(df), text="title",
-                         hover_data=["actors", "themes"], height=300)
+        # ✅ Use pandas DataFrame instead of px.data.frame
+        df = pd.DataFrame(timeline_data)
+        fig = px.scatter(
+            df,
+            x="date",
+            y=[1]*len(df),  # dummy y-axis for layout
+            text="title",
+            hover_data=["actors", "themes"],
+            height=300
+        )
         fig.update_yaxes(visible=False)
         st.plotly_chart(fig, use_container_width=True)
     
     # ---------------------------
-    # 5️⃣ Actor-Event Network Graph (PyVis)
+    # 6️⃣ Actor-Event Network Graph (PyVis)
     # ---------------------------
     st.subheader("Actor-Event Network")
     G = nx.Graph()
