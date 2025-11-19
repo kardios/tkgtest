@@ -5,12 +5,23 @@ from pyvis.network import Network
 import tempfile
 import os
 
-# --- Setup OpenAI client ---
-# Ensure your OPENAI_API_KEY is set in Streamlit's secrets
+# --- Setup OpenAI client using Environment Variables ---
+# This is compatible with Streamlit's secrets management for deployment
+api_key = os.environ.get("OPENAI_API_KEY")
+
+# Check if the API key is available
+if not api_key:
+    st.error(
+        "OpenAI API key not found. Please set the OPENAI_API_KEY environment variable or add it to your Streamlit secrets.", 
+        icon="🔑"
+    )
+    st.stop() # Halt the app if the key is missing
+
+# Initialize the OpenAI client with error handling
 try:
-    client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-except Exception:
-    st.error("OpenAI API key not found. Please add it to your Streamlit secrets.", icon="🔑")
+    client = OpenAI(api_key=api_key)
+except Exception as e:
+    st.error(f"Failed to initialize OpenAI client: {e}", icon="🚨")
     st.stop()
 
 
@@ -37,7 +48,7 @@ if st.button("Generate Knowledge Map", type="primary") and books:
     if len(books) < 2:
         st.warning("Please enter at least two books to map connections.")
     else:
-        progress_bar = st.progress(0)
+        progress_bar = st.progress(0, text="Initializing analysis...")
         status_text = st.empty()
         
         with st.spinner("Building knowledge graph... This may take a moment."):
@@ -58,7 +69,6 @@ if st.button("Generate Knowledge Map", type="primary") and books:
             for i, (book1, book2) in enumerate(book_pairs):
                 status_text.text(f"Analyzing connection {i+1}/{total_pairs}: '{book1}' and '{book2}'")
                 
-                # Prompt designed for a web-searching agent
                 prompt = (
                     f"Using a web search, analyze and determine if there are significant conceptual connections (e.g., themes, author influence, subject matter) between the following two books: "
                     f"Book 1: '{book1}' and Book 2: '{book2}'.\n\n"
@@ -67,27 +77,24 @@ if st.button("Generate Knowledge Map", type="primary") and books:
                 )
 
                 try:
-                    # CORRECTED API call using the Responses API with web_search tool
-                    # This aligns with your original code and the provided documentation.
+                    # Using the OpenAI Responses API with the web_search tool
                     response = client.responses.create(
-                        model="gpt-5",  # Using the model specified in the documentation
+                        model="gpt-5",
                         tools=[{"type": "web_search"}],
                         input=prompt,
                     )
-                    # Correctly access the response text from the Responses API object
                     text = response.output_text.strip()
 
                 except Exception as e:
                     st.error(f"An API error occurred while comparing '{book1}' and '{book2}': {e}")
-                    st.info("This may be due to not having access to the 'gpt-5' model or the Responses API, or an out-of-date 'openai' library.")
                     continue
 
                 # Reliable detection based on the prompt's instructions
                 if text.lower().startswith("yes"):
-                    explanation = text[4:].strip() # Remove "YES:"
+                    explanation = text[4:].strip()
                     G.add_edge(book1, book2, title=explanation, color="#3a78d1")
                 
-                progress_bar.progress((i + 1) / total_pairs)
+                progress_bar.progress((i + 1) / total_pairs, text=f"Analysis {i+1}/{total_pairs} complete")
 
             status_text.success("Analysis complete! Rendering visualization...")
 
