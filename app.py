@@ -1,18 +1,94 @@
-# app.py
 import streamlit as st
 from openai import OpenAI
-import json
-import pandas as pd
-import plotly.express as px
 import networkx as nx
 from pyvis.network import Network
 import tempfile
+import os
 
-# ---------------------------
-# 1️⃣ OpenAI Client Setup
-# ---------------------------
-# Use Streamlit secrets for API key
+# --- Setup OpenAI client ---
 api_key = st.secrets["OPENAI_API_KEY"]
+openai_client = OpenAI(api_key=api_key)
+
+# --- Streamlit UI --- 
+st.set_page_config(page_title="Book Knowledge Map", layout="wide")
+st.title("📚 Knowledge Map Generator (GPT‑5 + Web Search)")
+
+books_input = st.text_area(
+    "Enter a list of books (one per line):", 
+    value="The Republic\nLeviathan\nThe Social Contract\nDemocracy in America"
+)
+
+if st.button("Generate Map"):
+    book_list = [b.strip() for b in books_input.split("\n") if b.strip()]
+    if not book_list:
+        st.error("Please enter at least one book.")
+    else:
+        st.info(f"Processing {len(book_list)} books…")
+
+        # Call GPT-5 via Responses API with web_search tool
+        concepts_by_book = {}
+        for book in book_list:
+            prompt = (
+                f'Extract 6–10 key concepts from the book titled "{book}". '
+                "For each concept, show relationships between them in the form:\n"
+                "ConceptA -> ConceptB\n"
+                "Focus on major themes, ideas, and how they connect."
+            )
+
+            resp = openai_client.responses.create(
+                model="gpt-5",
+                tools=[{"type": "web_search"}],
+                tool_choice="auto",
+                input=prompt
+            )
+
+            # The generated content
+            generated = resp.output[0].content["text"]
+            concepts_by_book[book] = generated
+
+        st.success("Concept extraction complete.")
+
+        # Build graph
+        G = nx.Graph()
+        for book, text in concepts_by_book.items():
+            for line in text.splitlines():
+                if "->" in line:
+                    parts = line.split("->")
+                    if len(parts) == 2:
+                        src = parts[0].strip()
+                        tgt = parts[1].strip()
+                        if src and tgt:
+                            G.add_node(src, book=book)
+                            G.add_node(tgt, book=book)
+                            G.add_edge(src, tgt, book=book)
+
+        if G.number_of_nodes() == 0:
+            st.warning("No concepts found or parsed. Try different book titles or check your API response.")
+        else:
+            # Visualize graph with PyVis
+            net = Network(height="600px", width="100%", notebook=False)
+            net.from_nx(G)
+
+            # Save to temporary HTML file
+            tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".html")
+            net.save_graph(tmp_file.name)
+            tmp_file.close()
+
+            # Render in Streamlit
+            html = open(tmp_file.name, "r", encoding="utf-8").read()
+            st.components.v1.html(html, height=650, scrolling=True)
+
+            # Clean up
+            os.unlink(tmp_file.name)
+
+        # Optionally show raw concept output per book
+        with st.expander("Show raw concept extraction per book"):
+            for book, text in concepts_by_book.items():
+                st.markdown(f"**{book}**")
+                st.text(text)
+
+
+
 client = OpenAI(api_key=api_key)
 
 st.set_page_config(page_title="EventSense Web", layout="wide")
