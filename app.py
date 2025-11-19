@@ -3,9 +3,8 @@ import os
 import streamlit as st
 from openai import OpenAI
 
-# --- Setup API key ---
-os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
-client = OpenAI()  # no args needed, uses env variable
+# --- Use environment variable for API key ---
+OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 
 # --- Streamlit UI ---
 st.set_page_config(page_title="Book Knowledge Mapper", layout="wide")
@@ -18,23 +17,22 @@ if st.button("Generate Book List"):
         prompt = f"Provide a list of books about '{query}', one per line."
 
         try:
-            response = client.responses.create(
+            # Direct functional call without creating OpenAI instance
+            response = OpenAI(api_key=OPENAI_API_KEY).responses.create(
                 model="gpt-5",
                 tools=[{"type": "web_search"}],
                 tool_choice="auto",
                 input=prompt,
             )
 
-            # Extract text output
             text_output = response.output_text.strip()
 
-            # Display as list
             st.subheader("Books found:")
             for line in text_output.split("\n"):
                 if line.strip():
                     st.write(f"- {line.strip()}")
 
-            # Optionally show sources
+            # Optional: show sources
             if hasattr(response, "sources"):
                 st.subheader("Sources:")
                 for src in response.sources:
