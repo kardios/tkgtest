@@ -87,7 +87,7 @@ if st.button("Generate Knowledge Map"):
         with st.spinner("Analyzing with GPT-5 + Web Search..."):
 
             # 🔥 Lazy init (fix for proxy bug)
-            client = OpenAI()
+            client = OpenAI(api_key=OPENAI_API_KEY)
 
             try:
                 graph_data = generate_graph_data(client, books_input.strip())
