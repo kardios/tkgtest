@@ -1,74 +1,68 @@
 import streamlit as st
-from pyvis.network import Network
-import networkx as nx
 from openai import OpenAI
+import networkx as nx
+from pyvis.network import Network
+import tempfile
 import os
 
 # --- Setup OpenAI client ---
-# Make sure your OPENAI_API_KEY is set in Streamlit secrets
-os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
-client = OpenAI()  # Uses env variable
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # --- Streamlit UI ---
 st.set_page_config(page_title="Book Knowledge Mapper", layout="wide")
-st.title("📚 Book Knowledge Mapper")
+st.title("📚 Book Knowledge Mapper (GPT + Web Search Connections)")
 
-book_input = st.text_area(
-    "Enter a list of books (one per line):",
-    height=200
-)
+# --- User input: list of books ---
+st.markdown("Enter a list of books (one per line):")
+books_input = st.text_area("Books", height=200)
+books = [b.strip() for b in books_input.split("\n") if b.strip()]
 
-if st.button("Generate Knowledge Map") and book_input.strip():
-    books = [b.strip() for b in book_input.split("\n") if b.strip()]
-    st.write(f"Processing {len(books)} books...")
+if books:
+    st.success(f"{len(books)} books entered.")
 
-    # --- Step 1: Get relationships using OpenAI ---
-    book_relations = {}
-    with st.spinner("Analyzing books and extracting connections..."):
+# --- Generate connections ---
+if st.button("Generate Knowledge Map") and books:
+    with st.spinner("Analyzing book connections with GPT + Web Search..."):
+        G = nx.Graph()
         for book in books:
-            prompt = f"""
-            Given the book titled "{book}", list other books from the provided list that are related.
-            Also provide the nature of the relationship (e.g., similar theme, same author, sequel, shared topic).
-            Format the output as JSON like this:
-            {{
-                "related_books": [
-                    {{"title": "Other Book Title", "relation": "similar theme"}}
-                ]
-            }}
-            Only include books from this list: {books}
-            """
-            try:
-                response = client.responses.create(
-                    model="gpt-5",
-                    input=prompt
+            G.add_node(book)
+
+        # Pairwise connections
+        for i, book1 in enumerate(books):
+            for j, book2 in enumerate(books):
+                if j <= i:
+                    continue
+
+                prompt = (
+                    f"Are the following two books conceptually related? "
+                    f"Book 1: '{book1}', Book 2: '{book2}'. "
+                    "If yes, briefly explain the connection."
                 )
-                # Extract text
-                text = response.output_text
-                import json
-                data = json.loads(text)
-                book_relations[book] = data.get("related_books", [])
-            except Exception as e:
-                st.error(f"Error processing book '{book}': {e}")
-                book_relations[book] = []
 
-    # --- Step 2: Build NetworkX graph ---
-    G = nx.Graph()
-    for book in books:
-        G.add_node(book)
-        for relation in book_relations.get(book, []):
-            other = relation["title"]
-            rel_type = relation["relation"]
-            if other in books:  # only connect listed books
-                G.add_edge(book, other, label=rel_type)
+                try:
+                    # GPT-5 + web search
+                    response = client.responses.create(
+                        model="gpt-5",
+                        tools=[{"type": "web_search"}],
+                        input=prompt,
+                        tool_choice="auto"
+                    )
+                    text = response.output_text.strip().lower()
+                except Exception as e:
+                    text = ""
 
-    # --- Step 3: Visualize with PyVis ---
-    net = Network(height="600px", width="100%", notebook=False)
-    net.from_nx(G)
-    net.show_buttons(filter_=['physics'])
+                # Detect if GPT found a meaningful connection
+                if any(keyword in text for keyword in ["related", "connection", "similar", "theme", "reference"]):
+                    G.add_edge(book1, book2, title=text)
 
-    # Save and display in Streamlit
-    path = "/tmp/book_map.html"
-    net.save_graph(path)
-    st.components.v1.html(open(path, 'r', encoding='utf-8').read(), height=650)
+        # --- Visualize with PyVis ---
+        net = Network(height="600px", width="100%", notebook=False)
+        net.from_nx(G)
+        net.repulsion(node_distance=200, spring_length=200)
 
-    st.success("Knowledge map generated!")
+        tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".html")
+        net.save_graph(tmp_file.name)
+        st.components.v1.html(open(tmp_file.name, "r").read(), height=600, scrolling=True)
+
+else:
+    st.info("Enter books and click 'Generate Knowledge Map' to see connections.")
