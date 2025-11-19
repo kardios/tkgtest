@@ -11,8 +11,7 @@ st.set_page_config(page_title="Book Knowledge Mapper", layout="wide")
 st.title("📚 Book Knowledge Mapper (GPT-5 + Web Search)")
 
 # Store API key as environment variable (compatible)
-os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
-
+OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 
 # ---------------------------------------------------------
 # GPT-5: Generate knowledge graph JSON
