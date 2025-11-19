@@ -4,22 +4,26 @@ import networkx as nx
 from pyvis.network import Network
 import tempfile
 import os
+import httpx # Import the httpx library
 
-# --- Setup OpenAI client using Environment Variables ---
-# This is compatible with Streamlit's secrets management for deployment
+# --- Setup OpenAI client using Environment Variables with Proxy Fix ---
 api_key = os.environ.get("OPENAI_API_KEY")
 
-# Check if the API key is available
 if not api_key:
     st.error(
         "OpenAI API key not found. Please set the OPENAI_API_KEY environment variable or add it to your Streamlit secrets.", 
         icon="🔑"
     )
-    st.stop() # Halt the app if the key is missing
+    st.stop()
 
-# Initialize the OpenAI client with error handling
 try:
-    client = OpenAI(api_key=api_key)
+    # THE FIX: Create a custom httpx client that explicitly disables proxies.
+    # The Streamlit Cloud environment may have proxies that interfere with the OpenAI client.
+    http_client = httpx.Client(proxies=None)
+
+    # Pass the custom client to the OpenAI constructor.
+    client = OpenAI(api_key=api_key, http_client=http_client)
+
 except Exception as e:
     st.error(f"Failed to initialize OpenAI client: {e}", icon="🚨")
     st.stop()
@@ -77,7 +81,6 @@ if st.button("Generate Knowledge Map", type="primary") and books:
                 )
 
                 try:
-                    # Using the OpenAI Responses API with the web_search tool
                     response = client.responses.create(
                         model="gpt-5",
                         tools=[{"type": "web_search"}],
@@ -89,7 +92,6 @@ if st.button("Generate Knowledge Map", type="primary") and books:
                     st.error(f"An API error occurred while comparing '{book1}' and '{book2}': {e}")
                     continue
 
-                # Reliable detection based on the prompt's instructions
                 if text.lower().startswith("yes"):
                     explanation = text[4:].strip()
                     G.add_edge(book1, book2, title=explanation, color="#3a78d1")
@@ -98,7 +100,6 @@ if st.button("Generate Knowledge Map", type="primary") and books:
 
             status_text.success("Analysis complete! Rendering visualization...")
 
-            # --- Visualize with PyVis ---
             if not G.edges:
                 st.warning("No significant connections were found among the entered books.")
             else:
@@ -117,14 +118,13 @@ if st.button("Generate Knowledge Map", type="primary") and books:
                 }
                 """)
 
-                # Save to a temporary file to display in Streamlit
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".html") as tmp_file:
                     net.save_graph(tmp_file.name)
                     with open(tmp_file.name, 'r', encoding='utf-8') as f:
                         html_content = f.read()
                 
                 st.components.v1.html(html_content, height=720, scrolling=True)
-                os.unlink(tmp_file.name) # Clean up the temp file
+                os.unlink(tmp_file.name)
 
 else:
     st.info("Enter some books and click 'Generate Knowledge Map' to see the connections.")
