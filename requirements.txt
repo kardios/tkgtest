@@ -1,6 +1,4 @@
-streamlit>=1.25.0
-openai>=1.0.0
-plotly>=5.15.0
-networkx>=3.1
-pyvis>=0.3.2
-pandas>=2.1.0
+streamlit==1.27.0
+openai==1.26.0
+networkx==3.1
+pyvis==0.3.1
