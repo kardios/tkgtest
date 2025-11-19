@@ -4,9 +4,18 @@ import networkx as nx
 from pyvis.network import Network
 import tempfile
 import os
-import httpx # Import the httpx library
 
-# --- Setup OpenAI client using Environment Variables with Proxy Fix ---
+# --- DEFINITIVE PROXY FIX ---
+# Forcefully unset proxy environment variables at the very start of the script.
+# Some deployment environments (like Streamlit Community Cloud) have default proxies
+# that can conflict with the 'openai' library's underlying 'httpx' client.
+# By removing them, we prevent the client from ever trying to use them.
+for proxy_var in ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']:
+    os.environ.pop(proxy_var, None)
+# --- END FIX ---
+
+
+# --- Setup OpenAI client using Environment Variables ---
 api_key = os.environ.get("OPENAI_API_KEY")
 
 if not api_key:
@@ -16,14 +25,9 @@ if not api_key:
     )
     st.stop()
 
+# Now, initialize the client in the standard way. The proxy issue is already solved.
 try:
-    # THE FIX: Create a custom httpx client that explicitly disables proxies.
-    # The Streamlit Cloud environment may have proxies that interfere with the OpenAI client.
-    http_client = httpx.Client(proxies=None)
-
-    # Pass the custom client to the OpenAI constructor.
-    client = OpenAI(api_key=api_key, http_client=http_client)
-
+    client = OpenAI(api_key=api_key)
 except Exception as e:
     st.error(f"Failed to initialize OpenAI client: {e}", icon="🚨")
     st.stop()
@@ -60,16 +64,9 @@ if st.button("Generate Knowledge Map", type="primary") and books:
             for book in books:
                 G.add_node(book, label=book, title=book)
 
-            # Create all unique pairs of books
-            book_pairs = []
-            for i, book1 in enumerate(books):
-                for j, book2 in enumerate(books):
-                    if j > i:
-                        book_pairs.append((book1, book2))
-
+            book_pairs = [(books[i], books[j]) for i in range(len(books)) for j in range(i + 1, len(books))]
             total_pairs = len(book_pairs)
 
-            # Process each pair to find connections
             for i, (book1, book2) in enumerate(book_pairs):
                 status_text.text(f"Analyzing connection {i+1}/{total_pairs}: '{book1}' and '{book2}'")
                 
